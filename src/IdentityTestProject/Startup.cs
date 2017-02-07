@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -63,6 +64,8 @@ namespace IdentityTestProject
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
+                app.UseDatabaseErrorPage();
+                app.UseBrowserLink();
             }
 
             app.UseIdentity();
@@ -71,7 +74,7 @@ namespace IdentityTestProject
 
             app.UseOpenIddict();
 
-           
+            app.UseStaticFiles();
             app.UseMvcWithDefaultRoute();
             
             InitializeAsync(app.ApplicationServices, CancellationToken.None).GetAwaiter().GetResult();                      
