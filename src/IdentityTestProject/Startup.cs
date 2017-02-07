@@ -1,12 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using OpenIddict.Core;
+using OpenIddict.Models;
 
 namespace IdentityTestProject
 {
@@ -29,7 +33,26 @@ namespace IdentityTestProject
         {
             // Add framework services.
             services.AddMvc();
-        }
+
+            services.AddDbContext<ApplicationDbContext>(options =>
+            {
+                options.UseSqlServer(Configuration.GetConnectionString("Local"));
+
+                options.UseOpenIddict<int>();
+            });
+
+            services.AddIdentity<ApplicationUser, ApplicationRole>()
+                .AddEntityFrameworkStores<ApplicationDbContext, int>()
+                .AddDefaultTokenProviders();
+
+            services.AddOpenIddict<int>()
+                .AddEntityFrameworkCoreStores<ApplicationDbContext>()
+                .AddMvcBinders()
+                .EnableAuthorizationEndpoint("/Connect/Authorize")
+                .EnableTokenEndpoint("/Connect/Token")
+                .AllowAuthorizationCodeFlow()
+                .DisableHttpsRequirement();
+        }  
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
@@ -37,7 +60,55 @@ namespace IdentityTestProject
             loggerFactory.AddConsole(Configuration.GetSection("Logging"));
             loggerFactory.AddDebug();
 
-            app.UseMvc();
+            if (env.IsDevelopment())
+            {
+                app.UseDeveloperExceptionPage();
+            }
+
+            app.UseIdentity();
+
+            app.UseOAuthValidation();
+
+            app.UseOpenIddict();
+
+           
+            app.UseMvcWithDefaultRoute();
+            
+            InitializeAsync(app.ApplicationServices, CancellationToken.None).GetAwaiter().GetResult();                      
         }
+
+        private async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)
+        {
+            using (var scope = services.GetRequiredService<IServiceScopeFactory>().CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                await context.Database.EnsureCreatedAsync();
+
+                var manager = services.GetRequiredService<OpenIddictApplicationManager<OpenIddictApplication<int>>>();
+
+                if (await manager.FindByClientIdAsync("mvc", cancellationToken) == null)
+                {
+                    var application = new OpenIddictApplication<int>
+                    {
+                        ClientId = "mvc",
+                        DisplayName = "MVC Client Application"
+                    };
+
+                    //await manager.CreateAsync(application, "901564A5-E7FE-42CB-B10D-61EF6A8F3654", cancellationToken);
+                }
+
+                if (await manager.FindByClientIdAsync("postman", cancellationToken) == null)
+                {
+                    var application = new OpenIddictApplication<int>
+                    {
+                        ClientId = "postman",
+                        DisplayName = "Postman",
+                        RedirectUri = "https://www.getpostman.com/oauth2/callback"
+                    };
+
+                    await manager.CreateAsync(application, cancellationToken);
+                }
+            }
+        } 
     }
 }
