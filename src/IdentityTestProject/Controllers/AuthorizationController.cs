@@ -1,5 +1,3 @@
-﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
@@ -65,7 +63,7 @@ namespace IdentityTestProject.Controllers
         }
 
         [Authorize, FormValueRequired("submit.Accept")]
-        [HttpPost("~/connect/authorize"), ValidateAntiForgeryToken]
+        [HttpPost("~/Connect/Authorize"), ValidateAntiForgeryToken]
         public async Task<IActionResult> Accept(OpenIdConnectRequest request)
         {
             Debug.Assert(request.IsAuthorizationRequest(),
@@ -91,12 +89,85 @@ namespace IdentityTestProject.Controllers
         }
 
         [Authorize, FormValueRequired("submit.Deny")]
-        [HttpPost("~/connect/authorize"), ValidateAntiForgeryToken]
+        [HttpPost("~/Connect/Authorize"), ValidateAntiForgeryToken]
         public IActionResult Deny()
         {
             // Notify OpenIddict that the authorization grant has been denied by the resource owner
             // to redirect the user agent to the client application using the appropriate response_mode.
             return Forbid(OpenIdConnectServerDefaults.AuthenticationScheme);
+        }
+
+        [HttpGet("~/Connect/Logout")]
+        public IActionResult Logout(OpenIdConnectRequest request)
+        {
+            // Flow the request_id to allow OpenIddict to restore
+            // the original logout request from the distributed cache.
+            return View(new LogoutViewModel
+            {
+                RequestId = request.RequestId,
+            });
+        }
+
+        [HttpPost("~/Connect/Logout"), ValidateAntiForgeryToken]
+        public async Task<IActionResult> Logout()
+        {
+            // Ask ASP.NET Core Identity to delete the local and external cookies created
+            // when the user agent is redirected from the external identity provider
+            // after a successful authentication flow (e.g Google or Facebook).
+            await SignInManager.SignOutAsync();
+
+            // Returning a SignOutResult will ask OpenIddict to redirect the user agent
+            // to the post_logout_redirect_uri specified by the client application.
+            return SignOut(OpenIdConnectServerDefaults.AuthenticationScheme);
+        }
+
+        [HttpPost("~/Connect/Token"), Produces("application/json")]
+        public async Task<IActionResult> Exchange(OpenIdConnectRequest request)
+        {
+            Debug.Assert(request.IsTokenRequest(),
+                "The OpenIddict binder for ASP.NET Core MVC is not registered. " +
+                "Make sure services.AddOpenIddict().AddMvcBinders() is correctly called.");
+
+            if (request.IsAuthorizationCodeGrantType())
+            {
+                // Retrieve the claims principal stored in the authorization code.
+                var info = await HttpContext.Authentication.GetAuthenticateInfoAsync(
+                    OpenIdConnectServerDefaults.AuthenticationScheme);
+
+                // Retrieve the user profile corresponding to the authorization code.
+                var user = await UserManager.GetUserAsync(info.Principal);
+                if (user == null)
+                {
+                    return BadRequest(new OpenIdConnectResponse
+                    {
+                        Error = OpenIdConnectConstants.Errors.InvalidGrant,
+                        ErrorDescription = "The authorization code is no longer valid."
+                    });
+                }
+
+                // Ensure the user is still allowed to sign in.
+                if (!await SignInManager.CanSignInAsync(user))
+                {
+                    return BadRequest(new OpenIdConnectResponse
+                    {
+                        Error = OpenIdConnectConstants.Errors.InvalidGrant,
+                        ErrorDescription = "The user is no longer allowed to sign in."
+                    });
+                }
+
+                // Create a new authentication ticket, but reuse the properties stored
+                // in the authorization code, including the scopes originally granted.
+                var ticket = await CreateTicketAsync(request, user, info.Properties);
+
+                var ret = SignIn(ticket.Principal, ticket.Properties, ticket.AuthenticationScheme);
+                return ret;
+            }
+
+            return BadRequest(new OpenIdConnectResponse
+            {
+                Error = OpenIdConnectConstants.Errors.UnsupportedGrantType,
+                ErrorDescription = "The specified grant type is not supported."
+            });
         }
 
         private async Task<AuthenticationTicket> CreateTicketAsync(

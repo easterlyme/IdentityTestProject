@@ -3,13 +3,17 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using OpenIddict.Core;
 using OpenIddict.Models;
 
@@ -42,6 +46,10 @@ namespace IdentityTestProject
                 options.UseOpenIddict<int>();
             });
 
+            services.AddAuthentication(options => {
+                options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+            });
+
             services.AddIdentity<ApplicationUser, ApplicationRole>()
                 .AddEntityFrameworkStores<ApplicationDbContext, int>()
                 .AddDefaultTokenProviders();
@@ -51,7 +59,10 @@ namespace IdentityTestProject
                 .AddMvcBinders()
                 .EnableAuthorizationEndpoint("/Connect/Authorize")
                 .EnableTokenEndpoint("/Connect/Token")
+                .EnableLogoutEndpoint("/Connect/Logout")
+                .EnableUserinfoEndpoint("/Api/UserInfo")
                 .AllowAuthorizationCodeFlow()
+                .EnableRequestCaching()
                 .DisableHttpsRequirement();
         }  
 
@@ -68,15 +79,23 @@ namespace IdentityTestProject
                 app.UseBrowserLink();
             }
 
-            app.UseIdentity();
+            app.UseStaticFiles();
 
-            app.UseOAuthValidation();
+            app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/Api"), branch =>
+            {
+                branch.UseStatusCodePagesWithReExecute("/Error");
+                branch.UseIdentity();
+            });
+
+            app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/Api"), branch =>
+            {
+                branch.UseOAuthValidation();
+            });
 
             app.UseOpenIddict();
 
-            app.UseStaticFiles();
             app.UseMvcWithDefaultRoute();
-            
+
             InitializeAsync(app.ApplicationServices, CancellationToken.None).GetAwaiter().GetResult();                      
         }
 
@@ -94,10 +113,12 @@ namespace IdentityTestProject
                     var application = new OpenIddictApplication<int>
                     {
                         ClientId = "mvc",
-                        DisplayName = "MVC Client Application"
+                        DisplayName = "MVC Client Application",
+                        LogoutRedirectUri = "http://localhost:52191/",
+                        RedirectUri = "http://localhost:52191/signin-oidc"
                     };
 
-                    //await manager.CreateAsync(application, "901564A5-E7FE-42CB-B10D-61EF6A8F3654", cancellationToken);
+                    await manager.CreateAsync(application, "901564A5-E7FE-42CB-B10D-61EF6A8F3654", cancellationToken);
                 }
 
                 if (await manager.FindByClientIdAsync("postman", cancellationToken) == null)
