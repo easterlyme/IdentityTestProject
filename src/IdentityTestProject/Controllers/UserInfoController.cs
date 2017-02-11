@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using AspNet.Security.OAuth.Validation;
 using AspNet.Security.OpenIdConnect.Primitives;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json.Linq;
@@ -26,7 +27,8 @@ namespace IdentityTestProject.Controllers
 
         // GET: /api/userinfo
         [Authorize(ActiveAuthenticationSchemes = OAuthValidationDefaults.AuthenticationScheme)]
-        [HttpGet("userinfo"), Produces("application/json")]
+        [Route("[action]")]
+        [HttpGet, HttpOptions, Produces("application/json")]
         public async Task<IActionResult> Userinfo()
         {
             var user = await _userManager.GetUserAsync(User);

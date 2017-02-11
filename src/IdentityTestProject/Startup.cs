@@ -13,7 +13,9 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using OpenIddict;
 using OpenIddict.Core;
 using OpenIddict.Models;
 
@@ -46,6 +48,12 @@ namespace IdentityTestProject
                 options.UseOpenIddict<int>();
             });
 
+            services.AddCors(options =>
+            {
+                options.AddPolicy("Application",
+                    b => b.AllowAnyOrigin().AllowAnyMethod());
+            });
+
             services.AddAuthentication(options => {
                 options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
             });
@@ -62,6 +70,8 @@ namespace IdentityTestProject
                 .EnableLogoutEndpoint("/Connect/Logout")
                 .EnableUserinfoEndpoint("/Api/UserInfo")
                 .AllowAuthorizationCodeFlow()
+                .AllowPasswordFlow()
+                .AllowRefreshTokenFlow()
                 .EnableRequestCaching()
                 .DisableHttpsRequirement();
         }  
@@ -81,6 +91,11 @@ namespace IdentityTestProject
 
             app.UseStaticFiles();
 
+            app.UseCors(options =>
+            {
+                options.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+            });
+
             app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/Api"), branch =>
             {
                 branch.UseStatusCodePagesWithReExecute("/Error");
@@ -93,6 +108,11 @@ namespace IdentityTestProject
             });
 
             app.UseOpenIddict();
+            var openIddictOptions = app.ApplicationServices.GetRequiredService<IOptions<OpenIddictOptions>>().Value;
+            //openIddictOptions.Provider.OnSerializeAccessToken = context =>
+            //{
+            //    return Task.FromResult(0);
+            //};
 
             app.UseMvcWithDefaultRoute();
 
@@ -128,6 +148,19 @@ namespace IdentityTestProject
                         ClientId = "postman",
                         DisplayName = "Postman",
                         RedirectUri = "https://www.getpostman.com/oauth2/callback"
+                    };
+
+                    await manager.CreateAsync(application, cancellationToken);
+                }
+
+                if (await manager.FindByClientIdAsync("angular2", cancellationToken) == null)
+                {
+                    var application = new OpenIddictApplication<int>
+                    {
+                        ClientId = "angular2",
+                        DisplayName = "Angular2",
+                        RedirectUri = "http://localhost:52323",
+                        LogoutRedirectUri = "http://localhost:52323"
                     };
 
                     await manager.CreateAsync(application, cancellationToken);

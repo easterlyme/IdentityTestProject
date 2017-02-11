@@ -29,9 +29,9 @@ namespace IdentityTestProject.Controllers
             if (user == null)
             {
                 return BadRequest();
-            }
+            } 
 
-            return Content($"{user.UserName} has been successfully authenticated.");
+            return Content($"If this is being shown, then {user.UserName} has sucessfully accessed an api route that needs oauth authorization");
         }
     }
 }
